@@ -3,9 +3,12 @@
 from .utils import _file_discovery, load_non_db, save_non_db
 
 from ..config import DATABASE_SUPPORT, FILE_SUPPORT
+from ..clanto_cfg import __find_cfg, _ROOTDIR, _CFG_PATH
 from ..core.base_reader import ClantoFileManager, RawFile, ClantoFile
+from ..objects.template import MappingTemplate
 
-import pandas as pd
+import json
+import os
 
 
 class DatabaseManager(ClantoFileManager):
@@ -62,3 +65,43 @@ class FileManager(ClantoFileManager):
         """Saves all processed ClantoFiles and the mapping file."""
         for f in self.clantod_files:
             save_non_db(f)
+
+
+class MappingTemplateManager(ClantoFileManager):
+    def __init__(self, output_path: str) -> None:
+
+        super().__init__(root_path="", output_path=output_path)
+
+    def _load(self) -> list[str]:
+        """
+        Abstract method implementation for MappingTemplateManager.
+        This manager's primary role is to save mapping templates, not to discover
+        or load files in the same manner as other ClantoFileManagers.
+        Returns an empty list as there are no "sources" to load in this context.
+        """
+        return []
+
+    def save_files(self) -> None:
+        """
+        Saves the provided mapping template dictionary to a JSON file
+        in the specified output directory.
+
+        Args:
+            file (dict): The dictionary representing the mapping template to save.
+        """
+
+        with open(self.map_template.path, "w", encoding="utf-8") as f:
+            json.dump(self.map_template.file, f, indent=4)
+
+    @property
+    def map_template(self):
+        return self._map_template
+
+    @map_template.setter
+    def map_template(self, value: dict) -> MappingTemplate:
+        if not isinstance(value, dict):
+            raise TypeError(
+                f"Expected 'dict', but got '{type(value).__name__}' instead."
+            )
+        __path = os.path.join(_CFG_PATH or _ROOTDIR, "mapping_template.json")
+        self._map_template = MappingTemplate(file=value, path=__path)

@@ -37,13 +37,15 @@ def _file_discovery(
     found_files = []
 
     for pattern in patterns_to_search:
-        full_pattern = os.path.join(root_path, pattern)
-        found_files.extend(glob.glob(full_pattern))
+        # Construct the pattern for recursive search
+        full_pattern = os.path.join(root_path, "**", pattern)
+        # Use recursive=True to search subdirectories
+        found_files.extend(glob.glob(full_pattern, recursive=True))
 
     if not found_files:
         patterns_str = ", ".join(patterns_to_search)
         raise FileNotFoundError(
-            f"No files found matching patterns '{patterns_str}' in directory '{root_path}'."
+            f"No files found matching patterns '{patterns_str}' in directory '{root_path}' or its subdirectories."
         )
 
     return found_files if len(found_files) > 1 else found_files[0]

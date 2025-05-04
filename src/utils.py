@@ -133,13 +133,21 @@ def anonymise_phone(phone: str) -> str:
     return result
 
 
-def is_identifiable_string(value: Any) -> bool:
+def is_identifiable_string(
+    value: Any, exclude_patterns: str | list[str] | None = None
+) -> bool:
     """
-    Checks if a value is likely an identifiable string.
+    Checks if a value is likely an identifiable string, with an option to exclude
+    values matching specific regex patterns.
 
     :param value: The value to check
     :type value: Any
-    :return: True if the value is considered an identifiable string, False otherwise
+    :param exclude_patterns: A regex string or a list of regex strings. If the value
+                             matches any of these patterns, it will not be considered
+                             an identifiable string. Defaults to None.
+    :type exclude_patterns: str | list[str] | None
+    :return: True if the value is considered an identifiable string and does not
+             match any exclusion patterns, False otherwise.
     :rtype: bool
     """
     if not isinstance(value, str):
@@ -148,6 +156,17 @@ def is_identifiable_string(value: Any) -> bool:
     value_stripped = value.strip()
     if not value_stripped:
         return False
+
+    if exclude_patterns:
+
+        patterns_to_check = (
+            [exclude_patterns]
+            if isinstance(exclude_patterns, str)
+            else exclude_patterns
+        )
+        for pattern in patterns_to_check:
+            if re.search(pattern, value_stripped):
+                return False
 
     if is_number(value_stripped) or is_date(value_stripped):
         return False

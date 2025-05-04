@@ -7,6 +7,7 @@ import os
 import pandas as pd
 from dataclasses import dataclass, field
 import os
+from typing import Any
 
 
 @dataclass
@@ -17,8 +18,10 @@ class BaseFile:
 
     path: str
     """Path to the file"""
-    df: pd.DataFrame
-    """Loaded dataframe"""
+    df: pd.DataFrame | None = None
+    """Loaded dataframe (optional)"""
+    file: Any | None = None
+    """Loaded file (optional)"""
     filename: str = field(init=False)
     """Filename"""
     ext: str = field(init=False)
@@ -30,8 +33,11 @@ class BaseFile:
         """
         if not isinstance(self.path, str):
             raise TypeError("path must be a string")
-        if not isinstance(self.df, pd.DataFrame):
-            raise TypeError("df must be a pandas DataFrame")
+        # Allow df to be None, but if provided, it must be a pandas DataFrame
+        if self.df is not None and not isinstance(self.df, pd.DataFrame):
+            raise TypeError("df must be a pandas DataFrame or None")
+        if self.df is None and self.file is None:
+            raise ValueError("Either 'df' or 'file' must be provided.")
 
         self.filename = os.path.basename(self.path)
         self.ext = os.path.splitext(self.path)[1].lower()

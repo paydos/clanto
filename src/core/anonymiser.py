@@ -8,8 +8,15 @@ from ..utils import (
     anonymise_email,
     anonymise_phone,
 )
-from ..discovery.lookup import DatabaseManager, FileManager, RawFile, ClantoFile
+from ..discovery.lookup import (
+    DatabaseManager,
+    FileManager,
+    RawFile,
+    ClantoFile,
+    MappingTemplateManager,
+)
 from ..config import DEFAULT_ANONYMISATION_OPTIONS
+from configparser import ConfigParser
 
 import re
 
@@ -20,6 +27,8 @@ class Anonymiser:
         manager: DatabaseManager | FileManager,
         output_dir: str = "clanto_output",
         anonymisation_method: str = "random_chars",
+        make_mapping: bool = False,
+        cfg: ConfigParser = None,
     ) -> None:
         """
         Initialises the Anonymiser.
@@ -28,9 +37,11 @@ class Anonymiser:
             output_dir (str): Directory to save the anonymised files and mapping.
             anonymisation_method (str): 'random_chars' for random character strings,
                                         'random_words' for strings based on random words.
+            make_mapping (bool): Boolean to create or not the mapping template for custom use
         """
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self.cfg = cfg
 
         self.mapping: dict = {}
         """Dictionary containing the mapping of anonymised data"""
@@ -43,6 +54,8 @@ class Anonymiser:
 
         self.anonymisation_method = anonymisation_method
         self.options = DEFAULT_ANONYMISATION_OPTIONS.copy()
+
+        self.mapping_manager = MappingTemplateManager(output_dir)
 
     def _get_anonymised_value(self, original_value: str) -> str:
         """
@@ -96,6 +109,7 @@ class Anonymiser:
 
     def __save(self) -> None:
         self.manager.save_files()
+        self.mapping_manager.save_files()
 
     def anonymise_file(self, f: RawFile) -> None:
         """
@@ -147,4 +161,33 @@ class Anonymiser:
 
         self.manager.add_clanto_file(ClantoFile(mapping_filepath, mapping_df))
 
+        self.__save()
+
+    def gen_map_template(self):
+        """Generate a .json mapping template for the user to fill in."""
+        import json
+
+        if self.cfg and self.cfg.has_section("mapping_template_rules"):
+            if self.cfg.has_option("mapping_template_rules", "non_identifiable"):
+                _regex_rules = self.cfg.getlist(
+                    "mapping_template_rules", "non_identifiable"
+                )
+                if not isinstance(_regex_rules, list):
+                    raise TypeError(
+                        f"Regex rules for mapping template must be list[str], not {type(_regex_rules).__name__}"
+                    )
+
+        self.mapping_template: dict = {}
+        """A mapping template for the user to fill in later."""
+        if not self.manager.raw_loaded:
+            print("No supported files found to generate the mapping template.")
+            return
+
+        for f in self.manager.raw_loaded.values():
+            df = f.df
+            for column in df.columns:
+                for value in df[column].unique():
+                    if is_identifiable_string(value, _regex_rules):
+                        self.mapping_template[value] = ""
+        self.mapping_manager.map_template = self.mapping_template
         self.__save()
