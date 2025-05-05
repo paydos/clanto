@@ -10,6 +10,7 @@ from .utils import _file_discovery, load_clason
 
 import json
 import os
+import re
 
 
 class DatabaseManager(ClantoFileManager):
@@ -70,6 +71,10 @@ class FileManager(ClantoFileManager):
 
 class MappingTemplateManager(ClantoFileManager):
     def __init__(self, output_path: str) -> None:
+        self._compiled_custom_patterns: list[tuple[re.Pattern, str]] = []
+        """Regex-Compiled Custom Patterns"""
+        self._compiled_map_template: dict = {}
+        """Compiled Mapping Template"""
 
         super().__init__(root_path="", output_path=output_path)
 
@@ -87,6 +92,22 @@ class MappingTemplateManager(ClantoFileManager):
                 self.custom_sub = load_clason(f)
             elif "mapping_template" in f:
                 self.map_template = load_clason(f)
+        self.__precompile()
+
+    def __precompile(self) -> None:
+        """Precompile the Regex Patterns and preprocess the substitution rules"""
+        if isinstance(self.custom_sub.file, dict):
+            for patt_k, repl_v in self.custom_sub.file.items():
+                try:
+                    _comp_pattern = re.compile(re.escape(str(patt_k)))
+                    self._compiled_custom_patterns.append((_comp_pattern, str(repl_v)))
+
+                except re.error as e:
+                    ...
+        if isinstance(self.map_template.file, dict):
+            self._compiled_map_template = {
+                str(k): v for k, v in self.map_template.file.items()
+            }
 
     def save_files(self) -> None:
         """

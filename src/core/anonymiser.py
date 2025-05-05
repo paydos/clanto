@@ -21,6 +21,8 @@ from configparser import ConfigParser
 
 import re
 
+tqdm.pandas()
+
 
 class Anonymiser:
     def __init__(
@@ -72,7 +74,6 @@ class Anonymiser:
         :return: The new anonymised value
         :rtype: str
         """
-        print(original_value)
         if original_value in self.mapping:
             return self.mapping[original_value]
 
@@ -80,6 +81,12 @@ class Anonymiser:
         if re.search(email_pattern, original_value):
             new_value = anonymise_email(original_value)
             while new_value in self.reverse_mapping:
+                colliding_original = self.reverse_mapping[new_value]
+                # print(
+                #     f"  -> Collision detected for anonymised email '{new_value}'. "
+                #     f"It is already mapped to '{colliding_original}'. "
+                #     f"Attempting to generate another email value."
+                # )
                 new_value = anonymise_email(original_value)
             self.mapping[original_value] = new_value
             self.reverse_mapping[new_value] = original_value
@@ -89,6 +96,12 @@ class Anonymiser:
         if re.search(phone_pattern, original_value):
             new_value = anonymise_phone(original_value)
             while new_value in self.reverse_mapping:
+                colliding_original = self.reverse_mapping[new_value]
+                # print(
+                #     f"  -> Collision detected for anonymised phone '{new_value}'. "
+                #     f"It is already mapped to '{colliding_original}'. "
+                #     f"Attempting to generate another phone value."
+                # )
                 new_value = anonymise_phone(original_value)
             self.mapping[original_value] = new_value
             self.reverse_mapping[new_value] = original_value
@@ -96,6 +109,9 @@ class Anonymiser:
 
         new_value = None
         while new_value is None or new_value in self.reverse_mapping:
+            # Check if this is a retry attempt due to a collision
+            is_retry = new_value is not None and new_value in self.reverse_mapping
+
             if self.anonymisation_method == "random_chars":
                 new_value = generate_random_string(
                     length=self.options["random_length"], prefix=self.options["prefix"]
@@ -110,6 +126,27 @@ class Anonymiser:
                 raise ValueError(
                     f"Unknown anonymisation method: {self.anonymisation_method}"
                 )
+
+            status_message = (
+                "Retrying generation" if is_retry else "Generating new value"
+            )
+            print(
+                f"{status_message} for '{original_value}' using '{self.anonymisation_method}': '{new_value}'"
+            )
+            if new_value in self.reverse_mapping:
+                colliding_original_value = self.reverse_mapping[new_value]
+                # print(
+                #     f"  -> Collision detected for '{new_value}'. "
+                #     f"It is already mapped to '{colliding_original_value}'. "
+                #     f"Attempting to generate another value."
+                # )
+                if self.anonymisation_method == "custom_mapping":
+                    ...
+                    # print(
+                    #     f"  -> NOTE: For 'custom_mapping', the generated value '{new_value}' for '{original_value}' is deterministic. "
+                    #     f"This collision will persist as the same value will be generated repeatedly. "
+                    #     f"Please review your custom mapping or input data to resolve this conflict."
+                    # )
 
         self.mapping[original_value] = new_value
         self.reverse_mapping[new_value] = original_value
@@ -127,9 +164,11 @@ class Anonymiser:
         :type filepath: str
         """
 
+        tqdm.pandas(desc=f"Anonymising {f.filename}")
+
         anonymised_df = f.df.copy()
 
-        anonymised_df = anonymised_df.map(
+        anonymised_df = anonymised_df.progress_map(
             lambda value: (
                 self._get_anonymised_value(value)
                 if is_identifiable_string(value)
@@ -144,6 +183,7 @@ class Anonymiser:
                 path=os.path.join(self.output_dir, output_filename), df=anonymised_df
             )
         )
+        os.system("cls" if os.name == "nt" else "clear")
 
     def anonymise_files(self):
         """
@@ -155,10 +195,7 @@ class Anonymiser:
         if not self.manager.raw_loaded:
             print("No supported files found for anonymisation.")
             return
-
-        tqdm_iterator = tqdm(self.manager.raw_loaded.items(), desc="Anonymising files")
-        for _, fobj in tqdm_iterator:
-            tqdm_iterator.set_description(f"Anonymising file: {fobj.filename}")
+        for _, fobj in self.manager.raw_loaded.items():
             self.anonymise_file(fobj)
 
         mapping_df = pd.DataFrame(
