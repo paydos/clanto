@@ -2,6 +2,8 @@
 
 import glob
 import os
+import json
+
 from ..core.base_reader import RawFile, ClantoFile
 
 import pandas as pd
@@ -51,6 +53,21 @@ def _file_discovery(
     return found_files if len(found_files) > 1 else found_files[0]
 
 
+def load_clason(path: str) -> dict:
+    """
+    Loads a .clason file and returns its content as a dictionary.
+
+    Args:
+        path (str): The path to the .clason file.
+
+    Returns:
+        dict: The content of the .clason file as a dictionary.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data
+
+
 def load_non_db(f: str, *args, **kwargs) -> RawFile:
     """
     Loads a non-database supported file into a pandas DataFrame.
@@ -59,6 +76,7 @@ def load_non_db(f: str, *args, **kwargs) -> RawFile:
         f (str): The path to the file.
         *args: Positional arguments to pass to pandas read function.
         **kwargs: Keyword arguments to pass to pandas read function.
+
 
     Returns:
         RawFile: RawFile dataclass

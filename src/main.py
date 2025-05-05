@@ -41,8 +41,8 @@ def main():
     parser.add_argument(
         "-m",
         "--method",
-        help="Anonymisation method: 'random_chars' or 'random_words'.",
-        choices=["random_chars", "random_words"],
+        help="Anonymisation method: 'random_chars', 'random_words' or 'custom_mapping'.",
+        choices=["random_chars", "random_words", "custom_mapping"],
         default="random_chars",
     )
 

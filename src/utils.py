@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Any
 from .config import RANDOM_CHARS, RANDOM_WORDS
+from .discovery.lookup import MappingTemplateManager
 
 
 def is_number(value: float | int | str) -> bool:
@@ -54,6 +55,69 @@ def generate_random_string(length: int = 10, prefix: str = "ANON_") -> str:
     """
     random_part = "".join(random.choice(RANDOM_CHARS) for _ in range(length))
     return f"{prefix}{random_part}"
+
+
+import re
+
+
+def custom_mapping_replacement(
+    word: str, mapping_manager: MappingTemplateManager
+) -> str:
+    _map_template = mapping_manager.map_template.file
+    _map_custom = mapping_manager.custom_sub.file
+
+    word_str = str(word)
+    word_lower = word_str.lower()
+    if isinstance(_map_custom, dict):
+        print(f"DEBUG: Attempting custom mapping for word: '{word_str}'")
+        for pattern_key, replacement_value in _map_custom.items():
+            try:
+                search_pattern = re.compile(
+                    f".*{re.escape(str(pattern_key))}.*", re.IGNORECASE
+                )
+                print(
+                    f"DEBUG:   Comparing '{word_str}' with custom pattern '{pattern_key}'..."
+                )
+                if search_pattern.search(word_str):
+                    sub_pattern = re.compile(re.escape(str(pattern_key)), re.IGNORECASE)
+                    print(
+                        f"DEBUG:   MATCH! Custom pattern '{pattern_key}' matched '{word_str}'. Replacing with '{replacement_value}'."
+                    )
+                    return re.sub(sub_pattern, str(replacement_value), word_str)
+                else:
+                    print(
+                        f"DEBUG:   NO MATCH. Custom pattern '{pattern_key}' did not match '{word_str}'."
+                    )
+            except re.error as e:
+                print(
+                    f"DEBUG:   Regex error for pattern '{pattern_key}': {e}. Skipping this pattern."
+                )
+                continue
+
+    if isinstance(_map_template, dict):
+        print(f"DEBUG: Attempting template mapping for word: '{word_lower}'")
+        for template_key, template_value in _map_template.items():
+            print(
+                f"DEBUG:   Comparing '{word_lower}' with template key '{str(template_key).lower()}'..."
+            )
+            if word_lower == str(template_key).lower():
+                print(
+                    f"DEBUG:   MATCH! Template key '{template_key}' matched '{word_lower}'."
+                )
+                if str(template_value) != "":
+                    print(f"DEBUG:     Using template value: '{template_value}'.")
+                    return str(template_value)
+                else:
+                    print(
+                        f"DEBUG:     Template value is empty. Returning original word: '{word_str}'."
+                    )
+                    return word_str
+            else:
+                print(
+                    f"DEBUG:   NO MATCH. Template key '{template_key}' did not match '{word_lower}'."
+                )
+
+    return word_str
 
 
 def generate_random_word_string(prefix: str = "ANON_") -> str:

@@ -8,6 +8,7 @@ import os
 
 
 __CLANTO_CFG_EXT = "*.clanto"
+_CLANTO_JSON = "*.clason"
 _ROOTDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

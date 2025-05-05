@@ -6,6 +6,7 @@ from ..utils import (
     generate_random_word_string,
     is_identifiable_string,
     anonymise_email,
+    custom_mapping_replacement,
     anonymise_phone,
 )
 from ..discovery.lookup import (
@@ -56,6 +57,8 @@ class Anonymiser:
         self.options = DEFAULT_ANONYMISATION_OPTIONS.copy()
 
         self.mapping_manager = MappingTemplateManager(output_dir)
+        if anonymisation_method == "custom_mapping":
+            self.mapping_manager._load()
 
     def _get_anonymised_value(self, original_value: str) -> str:
         """
@@ -69,6 +72,7 @@ class Anonymiser:
         :return: The new anonymised value
         :rtype: str
         """
+        print(original_value)
         if original_value in self.mapping:
             return self.mapping[original_value]
 
@@ -98,6 +102,10 @@ class Anonymiser:
                 )
             elif self.anonymisation_method == "random_words":
                 new_value = generate_random_word_string(prefix=self.options["prefix"])
+            elif self.anonymisation_method == "custom_mapping":
+                new_value = custom_mapping_replacement(
+                    original_value, self.mapping_manager
+                )
             else:
                 raise ValueError(
                     f"Unknown anonymisation method: {self.anonymisation_method}"
@@ -147,7 +155,6 @@ class Anonymiser:
         if not self.manager.raw_loaded:
             print("No supported files found for anonymisation.")
             return
-        from tqdm import tqdm
 
         tqdm_iterator = tqdm(self.manager.raw_loaded.items(), desc="Anonymising files")
         for _, fobj in tqdm_iterator:
@@ -183,11 +190,16 @@ class Anonymiser:
             print("No supported files found to generate the mapping template.")
             return
 
-        for f in self.manager.raw_loaded.values():
+        tqdm_iterator = tqdm(
+            self.manager.raw_loaded.values(), desc="Creating mapping template"
+        )
+        for f in tqdm_iterator:
+            tqdm_iterator.set_description(f"Scanning {f.filename}")
             df = f.df
             for column in df.columns:
                 for value in df[column].unique():
                     if is_identifiable_string(value, _regex_rules):
                         self.mapping_template[value] = ""
+
         self.mapping_manager.map_template = self.mapping_template
         self.__save()
