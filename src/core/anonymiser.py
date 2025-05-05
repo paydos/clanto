@@ -67,90 +67,151 @@ class Anonymiser:
         Gets an anonymised value for a given original value.
         Ensures coherence by reusing existing anonymised values.
         Handles potential collisions for new anonymised values.
+        Can identify and replace multiple identifiable entities within a single string.
 
-        :param original_value: Self explanatory
+        :param original_value: The string value to be anonymised.
         :type original_value: str
-        :raises ValueError: If arg parsed does not match one of the available methods
-        :return: The new anonymised value
+        :raises ValueError: If an unknown anonymisation method is specified.
+        :return: The anonymised value.
         :rtype: str
         """
+
+        # Helper function to get/generate an anonymised value for a single identifiable token.
+        # This encapsulates the core logic for mapping, reverse mapping, and collision handling.
+        # It is nested to allow access to `self` from the outer `_get_anonymised_value` scope.
+        def _get_anonymised_single_token(
+            token: str, token_type: str = "general"
+        ) -> str:
+            if token in self.mapping:
+                return self.mapping[token]
+
+            new_token_value = None
+            should_retry_generation = True
+            is_first_attempt = True
+
+            while should_retry_generation and (
+                new_token_value is None or new_token_value in self.reverse_mapping
+            ):
+                status_message = (
+                    "Generating new value"
+                    if is_first_attempt
+                    else "Retrying generation"
+                )
+                # Original print statements were commented out, keeping them that way.
+                # print(
+                #     f"{status_message} for '{token}' (type: {token_type}) using '{self.anonymisation_method}'"
+                # )
+
+                if self.anonymisation_method == "custom_mapping":
+                    new_token_value = custom_mapping_replacement(
+                        token, self.mapping_manager
+                    )
+                    if new_token_value in self.reverse_mapping:
+                        # print(
+                        #     f"  -> Collision detected for '{new_token_value}'. "
+                        #     f"It is already mapped to '{self.reverse_mapping[new_token_value]}'. "
+                        #     f"NOTE: For 'custom_mapping', this collision will persist as the same value will be generated repeatedly. "
+                        #     f"Please review your custom mapping or input data to resolve this conflict."
+                        # )
+                        should_retry_generation = (
+                            False  # Stop retrying for custom_mapping
+                        )
+                else:  # random_chars, random_words, or specific token types (email, phone)
+                    if token_type == "email":
+                        new_token_value = anonymise_email(token)
+                    elif token_type == "phone":
+                        new_token_value = anonymise_phone(token)
+                    elif self.anonymisation_method == "random_chars":
+                        new_token_value = generate_random_string(
+                            length=self.options["random_length"],
+                            prefix=self.options["prefix"],
+                        )
+                    elif self.anonymisation_method == "random_words":
+                        new_token_value = generate_random_word_string(
+                            prefix=self.options["prefix"]
+                        )
+                    else:
+                        raise ValueError(
+                            f"Unknown anonymisation method: {self.anonymisation_method}"
+                        )
+
+                    if new_token_value in self.reverse_mapping:
+                        colliding_original = self.reverse_mapping[new_token_value]
+                        # print(
+                        #     f"  -> Collision detected for '{new_token_value}'. "
+                        #     f"It is already mapped to '{colliding_original}'. "
+                        #     f"Attempting to generate another value for '{token}'."
+                        # )
+                        # should_retry_generation remains True for non-custom methods
+
+                is_first_attempt = False  # After the first attempt
+
+            self.mapping[token] = new_token_value
+            self.reverse_mapping[new_token_value] = token
+            return new_token_value
+
+        # --- Main logic for _get_anonymised_value ---
+
+        # 1. If the entire original_value has been mapped before, return it directly for coherence.
+        # This handles cases where the cell content is *exactly* an identifiable string that was processed.
         if original_value in self.mapping:
             return self.mapping[original_value]
 
-        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-        if re.search(email_pattern, original_value):
-            new_value = anonymise_email(original_value)
-            while new_value in self.reverse_mapping:
-                colliding_original = self.reverse_mapping[new_value]
-                # print(
-                #     f"  -> Collision detected for anonymised email '{new_value}'. "
-                #     f"It is already mapped to '{colliding_original}'. "
-                #     f"Attempting to generate another email value."
-                # )
-                new_value = anonymise_email(original_value)
-            self.mapping[original_value] = new_value
-            self.reverse_mapping[new_value] = original_value
-            return new_value
+        # 2. Define patterns for identifiable entities *within* a larger string.
+        # These patterns should not have anchors (`^`, `$`).
+        email_pattern_in_text = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+        # A more robust phone pattern for finding within text, allowing various formats.
+        # This is an improvement over the original's loose pattern without anchors.
+        phone_pattern_in_text = (
+            r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}\b"
+        )
 
-        phone_pattern = r"^[\d\s\-\(\)\+]*\d[\d\s\-\(\)\+]*$"
-        if re.search(phone_pattern, original_value):
-            new_value = anonymise_phone(original_value)
-            while new_value in self.reverse_mapping:
-                colliding_original = self.reverse_mapping[new_value]
-                # print(
-                #     f"  -> Collision detected for anonymised phone '{new_value}'. "
-                #     f"It is already mapped to '{colliding_original}'. "
-                #     f"Attempting to generate another phone value."
-                # )
-                new_value = anonymise_phone(original_value)
-            self.mapping[original_value] = new_value
-            self.reverse_mapping[new_value] = original_value
-            return new_value
+        # Combine patterns into a single regex for `re.sub`.
+        # Using named groups for clarity in the replacer function.
+        combined_pattern = re.compile(
+            f"(?P<email>{email_pattern_in_text})|(?P<phone>{phone_pattern_in_text})"
+        )
 
-        new_value = None
-        while new_value is None or new_value in self.reverse_mapping:
-            # Check if this is a retry attempt due to a collision
-            is_retry = new_value is not None and new_value in self.reverse_mapping
+        made_replacements = False
 
-            if self.anonymisation_method == "random_chars":
-                new_value = generate_random_string(
-                    length=self.options["random_length"], prefix=self.options["prefix"]
-                )
-            elif self.anonymisation_method == "random_words":
-                new_value = generate_random_word_string(prefix=self.options["prefix"])
-            elif self.anonymisation_method == "custom_mapping":
-                new_value = custom_mapping_replacement(
-                    original_value, self.mapping_manager
-                )
+        # Define the replacer function for re.sub
+        def replacer(match):
+            nonlocal made_replacements
+            made_replacements = True
+            matched_string = match.group(0)
+
+            if match.group("email"):
+                return _get_anonymised_single_token(matched_string, "email")
+            elif match.group("phone"):
+                return _get_anonymised_single_token(matched_string, "phone")
             else:
-                raise ValueError(
-                    f"Unknown anonymisation method: {self.anonymisation_method}"
-                )
+                # This case should ideally not be reached if patterns are exhaustive for identifiable types.
+                # Fallback to general anonymisation for the matched string.
+                return _get_anonymised_single_token(matched_string, "general")
 
-            status_message = (
-                "Retrying generation" if is_retry else "Generating new value"
-            )
-            print(
-                f"{status_message} for '{original_value}' using '{self.anonymisation_method}': '{new_value}'"
-            )
-            if new_value in self.reverse_mapping:
-                colliding_original_value = self.reverse_mapping[new_value]
-                # print(
-                #     f"  -> Collision detected for '{new_value}'. "
-                #     f"It is already mapped to '{colliding_original_value}'. "
-                #     f"Attempting to generate another value."
-                # )
-                if self.anonymisation_method == "custom_mapping":
-                    ...
-                    # print(
-                    #     f"  -> NOTE: For 'custom_mapping', the generated value '{new_value}' for '{original_value}' is deterministic. "
-                    #     f"This collision will persist as the same value will be generated repeatedly. "
-                    #     f"Please review your custom mapping or input data to resolve this conflict."
-                    # )
+        # Perform replacements using re.sub with the replacer function
+        anonymised_value_with_parts_replaced = combined_pattern.sub(
+            replacer, original_value
+        )
 
-        self.mapping[original_value] = new_value
-        self.reverse_mapping[new_value] = original_value
-        return new_value
+        if made_replacements:
+            # If specific identifiable parts were found and replaced,
+            # store the mapping for the entire original_value to its new anonymised form.
+            self.mapping[original_value] = anonymised_value_with_parts_replaced
+            self.reverse_mapping[anonymised_value_with_parts_replaced] = original_value
+            return anonymised_value_with_parts_replaced
+        else:
+            # If no specific patterns (email/phone) were found within the string,
+            # but the string itself is considered identifiable (as per `is_identifiable_string`
+            # which would have called this function), then anonymise the entire string
+            # using the general method (random_chars, random_words, or custom_mapping).
+            # This preserves the original behavior for general identifiable strings.
+            final_anonymised_value = _get_anonymised_single_token(
+                original_value, "general"
+            )
+            self.mapping[original_value] = final_anonymised_value
+            self.reverse_mapping[final_anonymised_value] = original_value
+            return final_anonymised_value
 
     def __save(self) -> None:
         self.manager.save_files()
