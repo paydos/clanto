@@ -10,7 +10,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "clanto=anon_module.main:main",
+            "clanto=src.main:main",
         ],
     },
     author="Daniel Ruiz Blanco",
