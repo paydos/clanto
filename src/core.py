@@ -95,7 +95,7 @@ class Anonymiser:
         :param filepath: File path
         :type filepath: str
         """
-        print(f"Anonymising file: {filepath}")
+        print(f"\rAnonymising file: {filepath}", end="", flush=True)
         file_extension = os.path.splitext(filepath)[1].lower()
         df = None
 
@@ -104,12 +104,19 @@ class Anonymiser:
         elif file_extension in [".xlsx", ".xls"]:
             df = pd.read_excel(filepath)
         else:
-            print(f"Skipping unsupported file type: {filepath}")
+            print(f"\nSkipping unsupported file type: {filepath}")
             return
 
         anonymised_df = df.copy()
+        total_columns = len(anonymised_df.columns)
+        total_rows = len(anonymised_df)
 
-        for column in anonymised_df.columns:
+        for col_idx, column in enumerate(anonymised_df.columns):
+            print(
+                f"\rProcessing file: {os.path.basename(filepath)} - Column {col_idx + 1}/{total_columns}",
+                end="",
+                flush=True,
+            )
             for i, value in enumerate(anonymised_df[column]):
                 if is_identifiable_string(value):
                     anonymised_df.at[i, column] = self._get_anonymised_value(value)
@@ -122,7 +129,7 @@ class Anonymiser:
         elif file_extension in [".xlsx", ".xls"]:
             anonymised_df.to_excel(output_filepath, index=False)
 
-        print(f"Anonymised file saved to: {output_filepath}")
+        print(f"\nAnonymised file saved to: {output_filepath}")
 
     def anonymise_files(self, filepaths: Iterable[str]):
         """
@@ -135,7 +142,9 @@ class Anonymiser:
             print("No supported files found for anonymisation.")
             return
 
-        for filepath in filepaths:
+        total_files = len(filepaths)
+        for file_idx, filepath in enumerate(filepaths):
+            print(f"\rProcessing file {file_idx + 1}/{total_files}", end="", flush=True)
             self.anonymise_file(filepath)
 
         mapping_df = pd.DataFrame(
@@ -143,4 +152,4 @@ class Anonymiser:
         )
         mapping_filepath = os.path.join(self.output_dir, "anonymisation_mapping.csv")
         mapping_df.to_csv(mapping_filepath, index=False)
-        print(f"Anonymisation mapping saved to: {mapping_filepath}")
+        print(f"\nAnonymisation mapping saved to: {mapping_filepath}")
