@@ -1,20 +1,23 @@
-from typing import Iterable
+from tqdm import tqdm
 import pandas as pd
 import os
-from .utils import (
+from ..utils import (
     generate_random_string,
     generate_random_word_string,
     is_identifiable_string,
     anonymise_email,
     anonymise_phone,
 )
-from .config import DEFAULT_ANONYMISATION_OPTIONS
+from ..discovery.lookup import DatabaseManager, FileManager, RawFile, ClantoFile
+from ..config import DEFAULT_ANONYMISATION_OPTIONS
+
 import re
 
 
 class Anonymiser:
     def __init__(
         self,
+        manager: DatabaseManager | FileManager,
         output_dir: str = "clanto_output",
         anonymisation_method: str = "random_chars",
     ) -> None:
@@ -34,6 +37,9 @@ class Anonymiser:
 
         self.reverse_mapping: dict = {}
         """Dictionary containing the mapping of anonymised data, reversed for collision checking"""
+
+        self.manager = manager
+        """manager containing the file(s) to be anonymised """
 
         self.anonymisation_method = anonymisation_method
         self.options = DEFAULT_ANONYMISATION_OPTIONS.copy()
@@ -88,68 +94,61 @@ class Anonymiser:
         self.reverse_mapping[new_value] = original_value
         return new_value
 
-    def anonymise_file(self, filepath: str) -> None:
+    def __save(self) -> None:
+        self.manager.save_files()
+
+    def anonymise_file(self, f: RawFile) -> None:
         """
         Reads a single CSV or XLSX file, anonymises it, and saves the output.
 
-        :param filepath: File path
+        :param filepath: RawFile path
         :type filepath: str
         """
-        print(f"\rAnonymising file: {filepath}", end="", flush=True)
-        file_extension = os.path.splitext(filepath)[1].lower()
-        df = None
+        print(f"\rAnonymising file: {f.filename}", end="", flush=True)
 
-        if file_extension == ".csv":
-            df = pd.read_csv(filepath)
-        elif file_extension in [".xlsx", ".xls"]:
-            df = pd.read_excel(filepath)
-        else:
-            print(f"\nSkipping unsupported file type: {filepath}")
-            return
-
-        anonymised_df = df.copy()
+        anonymised_df = f.df.copy()
         total_columns = len(anonymised_df.columns)
         total_rows = len(anonymised_df)
 
-        for col_idx, column in enumerate(anonymised_df.columns):
-            print(
-                f"\rProcessing file: {os.path.basename(filepath)} - Column {col_idx + 1}/{total_columns}",
-                end="",
-                flush=True,
-            )
+        for col_idx, column in tqdm(
+            enumerate(anonymised_df.columns),
+            total=total_columns,
+            desc=f"Processing file: {f.filename}",
+        ):
+
             for i, value in enumerate(anonymised_df[column]):
                 if is_identifiable_string(value):
                     anonymised_df.at[i, column] = self._get_anonymised_value(value)
 
-        output_filename = f"anonymised_{os.path.basename(filepath)}"
-        output_filepath = os.path.join(self.output_dir, output_filename)
+        output_filename = f"anonymised_{f.filename}"
 
-        if file_extension == ".csv":
-            anonymised_df.to_csv(output_filepath, index=False)
-        elif file_extension in [".xlsx", ".xls"]:
-            anonymised_df.to_excel(output_filepath, index=False)
+        self.manager.add_clanto_file(
+            ClantoFile(
+                path=os.path.join(self.output_dir, output_filename), df=anonymised_df
+            )
+        )
 
-        print(f"\nAnonymised file saved to: {output_filepath}")
+        self.__save()
 
-    def anonymise_files(self, filepaths: Iterable[str]):
+    def anonymise_files(self):
         """
         Anonymises a list of CSV or XLSX files.
 
         :param filepaths: List of paths
-        :type filepaths: Iterable[str]
         """
-        if not filepaths:
+
+        if not self.manager.raw_loaded:
             print("No supported files found for anonymisation.")
             return
 
-        total_files = len(filepaths)
-        for file_idx, filepath in enumerate(filepaths):
+        total_files = len(self.manager.raw_loaded)
+        for file_idx, (_, fobj) in enumerate(self.manager.raw_loaded.items()):
             print(f"\rProcessing file {file_idx + 1}/{total_files}", end="", flush=True)
-            self.anonymise_file(filepath)
+            self.anonymise_file(fobj)
 
         mapping_df = pd.DataFrame(
             self.mapping.items(), columns=["Original Value", "Anonymised Value"]
         )
         mapping_filepath = os.path.join(self.output_dir, "anonymisation_mapping.csv")
-        mapping_df.to_csv(mapping_filepath, index=False)
-        print(f"\nAnonymisation mapping saved to: {mapping_filepath}")
+
+        self.manager.add_clanto_file(ClantoFile(mapping_filepath, mapping_df))

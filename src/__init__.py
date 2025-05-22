@@ -1,4 +1,4 @@
-from .core import Anonymiser
+from .core.anonymiser import Anonymiser
 from .main import create_dummy_files
 
 __version__ = "0.1.0"

@@ -9,8 +9,13 @@ dist/
 downloads/
 eggs/
 .eggs/
+*.lock
 lib/
 lib64/
+.venv/
+*.csv
+*.xlsx
+.python-version
 parts/
 sdist/
 var/
