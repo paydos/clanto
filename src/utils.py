@@ -69,12 +69,14 @@ def generate_random_word_string(prefix: str = "ANON_") -> str:
     return f"{prefix}{'_'.join(selected_words).upper()}"
 
 
-def anonymise_email(email: str) -> str:
+def anonymise_email(email: str, keep_domain: bool = True) -> str:
     """
     Anonymises an email address while preserving its format.
 
     :param email: Original email address
     :type email: str
+    :param keep_domain: Whether to keep the original domain or anonymise it, defaults to True
+    :type keep_domain: bool, optional
     :return: Anonymised email address
     :rtype: str
     """
@@ -89,13 +91,16 @@ def anonymise_email(email: str) -> str:
 
     random_username = "".join(random.choice(RANDOM_CHARS) for _ in range(len(username)))
 
-    domain_parts = domain.split(".")
-    random_domain = ".".join(
-        "".join(random.choice(RANDOM_CHARS) for _ in range(len(part)))
-        for part in domain_parts
-    )
+    if keep_domain:
+        anonymised_domain = domain
+    else:
+        domain_parts = domain.split(".")
+        anonymised_domain = ".".join(
+            "".join(random.choice(RANDOM_CHARS) for _ in range(len(part)))
+            for part in domain_parts
+        )
 
-    return f"{random_username}@{random_domain}"
+    return f"{random_username}@{anonymised_domain}"
 
 
 def anonymise_phone(phone: str) -> str:

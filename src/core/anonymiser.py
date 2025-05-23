@@ -104,21 +104,16 @@ class Anonymiser:
         :param filepath: RawFile path
         :type filepath: str
         """
-        print(f"\rAnonymising file: {f.filename}", end="", flush=True)
 
         anonymised_df = f.df.copy()
-        total_columns = len(anonymised_df.columns)
-        total_rows = len(anonymised_df)
 
-        for col_idx, column in tqdm(
-            enumerate(anonymised_df.columns),
-            total=total_columns,
-            desc=f"Processing file: {f.filename}",
-        ):
-
-            for i, value in enumerate(anonymised_df[column]):
-                if is_identifiable_string(value):
-                    anonymised_df.at[i, column] = self._get_anonymised_value(value)
+        anonymised_df = anonymised_df.map(
+            lambda value: (
+                self._get_anonymised_value(value)
+                if is_identifiable_string(value)
+                else value
+            )
+        )
 
         output_filename = f"anonymised_{f.filename}"
 
@@ -127,8 +122,6 @@ class Anonymiser:
                 path=os.path.join(self.output_dir, output_filename), df=anonymised_df
             )
         )
-
-        self.__save()
 
     def anonymise_files(self):
         """
@@ -140,10 +133,11 @@ class Anonymiser:
         if not self.manager.raw_loaded:
             print("No supported files found for anonymisation.")
             return
+        from tqdm import tqdm
 
-        total_files = len(self.manager.raw_loaded)
-        for file_idx, (_, fobj) in enumerate(self.manager.raw_loaded.items()):
-            print(f"\rProcessing file {file_idx + 1}/{total_files}", end="", flush=True)
+        tqdm_iterator = tqdm(self.manager.raw_loaded.items(), desc="Anonymising files")
+        for _, fobj in tqdm_iterator:
+            tqdm_iterator.set_description(f"Anonymising file: {fobj.filename}")
             self.anonymise_file(fobj)
 
         mapping_df = pd.DataFrame(
@@ -152,3 +146,5 @@ class Anonymiser:
         mapping_filepath = os.path.join(self.output_dir, "anonymisation_mapping.csv")
 
         self.manager.add_clanto_file(ClantoFile(mapping_filepath, mapping_df))
+
+        self.__save()
