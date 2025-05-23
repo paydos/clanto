@@ -36,8 +36,6 @@ def _file_discovery(
 
     found_files = []
 
-    print(patterns_to_search)
-
     for pattern in patterns_to_search:
         full_pattern = os.path.join(root_path, pattern)
         found_files.extend(glob.glob(full_pattern))
