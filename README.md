@@ -4,6 +4,7 @@ Clanto is a solution designed to assist Machine Learning Engineers and data prof
 
 Clanto has an implementation of Format-Preserving Encryption (FPE). This feature ensures that anonymised data retains its original format, allowing it to be "plug-and-play" with existing data pipelines and Machine Learning models without requiring extensive re-engineering.
 
+
 ## Installation
 
 Currently, Clanto can be installed directly from its GitHub repository:
