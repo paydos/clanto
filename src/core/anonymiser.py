@@ -76,9 +76,7 @@ class Anonymiser:
         :rtype: str
         """
 
-        # Helper function to get/generate an anonymised value for a single identifiable token.
-        # This encapsulates the core logic for mapping, reverse mapping, and collision handling.
-        # It is nested to allow access to `self` from the outer `_get_anonymised_value` scope.
+      
         def _get_anonymised_single_token(
             token: str, token_type: str = "general"
         ) -> str:
@@ -97,26 +95,18 @@ class Anonymiser:
                     if is_first_attempt
                     else "Retrying generation"
                 )
-                # Original print statements were commented out, keeping them that way.
-                # print(
-                #     f"{status_message} for '{token}' (type: {token_type}) using '{self.anonymisation_method}'"
-                # )
+              
 
                 if self.anonymisation_method == "custom_mapping":
                     new_token_value = custom_mapping_replacement(
                         token, self.mapping_manager
                     )
                     if new_token_value in self.reverse_mapping:
-                        # print(
-                        #     f"  -> Collision detected for '{new_token_value}'. "
-                        #     f"It is already mapped to '{self.reverse_mapping[new_token_value]}'. "
-                        #     f"NOTE: For 'custom_mapping', this collision will persist as the same value will be generated repeatedly. "
-                        #     f"Please review your custom mapping or input data to resolve this conflict."
-                        # )
+                    
                         should_retry_generation = (
-                            False  # Stop retrying for custom_mapping
+                            False  
                         )
-                else:  # random_chars, random_words, or specific token types (email, phone)
+                else:  
                     if token_type == "email":
                         new_token_value = anonymise_email(token)
                     elif token_type == "phone":
@@ -142,9 +132,9 @@ class Anonymiser:
                         #     f"It is already mapped to '{colliding_original}'. "
                         #     f"Attempting to generate another value for '{token}'."
                         # )
-                        # should_retry_generation remains True for non-custom methods
+                        #
 
-                is_first_attempt = False  # After the first attempt
+                is_first_attempt = False  
 
             self.mapping[token] = new_token_value
             self.reverse_mapping[new_token_value] = token
@@ -152,60 +142,51 @@ class Anonymiser:
 
         # --- Main logic for _get_anonymised_value ---
 
-        # 1. If the entire original_value has been mapped before, return it directly for coherence.
-        # This handles cases where the cell content is *exactly* an identifiable string that was processed.
         if original_value in self.mapping:
             return self.mapping[original_value]
 
-        # 2. Define patterns for identifiable entities *within* a larger string.
-        # These patterns should not have anchors (`^`, `$`).
         email_pattern_in_text = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-        # A more robust phone pattern for finding within text, allowing various formats.
-        # This is an improvement over the original's loose pattern without anchors.
+
         phone_pattern_in_text = (
             r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}\b"
         )
 
-        # Combine patterns into a single regex for `re.sub`.
-        # Using named groups for clarity in the replacer function.
+    
         combined_pattern = re.compile(
             f"(?P<email>{email_pattern_in_text})|(?P<phone>{phone_pattern_in_text})"
         )
 
         made_replacements = False
 
-        # Define the replacer function for re.sub
         def replacer(match):
             nonlocal made_replacements
-            made_replacements = True
             matched_string = match.group(0)
+            replaced_value = matched_string 
 
             if match.group("email"):
-                return _get_anonymised_single_token(matched_string, "email")
+                replaced_value = _get_anonymised_single_token(matched_string, "email")
+                made_replacements = True
             elif match.group("phone"):
-                return _get_anonymised_single_token(matched_string, "phone")
-            else:
-                # This case should ideally not be reached if patterns are exhaustive for identifiable types.
-                # Fallback to general anonymisation for the matched string.
-                return _get_anonymised_single_token(matched_string, "general")
+                replaced_value = _get_anonymised_single_token(matched_string, "phone")
+                made_replacements = True
+            elif match.group("general_word"):
+                if is_identifiable_string(matched_string, self._regex_rules):
+                    replaced_value = _get_anonymised_single_token(matched_string, "general")
+                    made_replacements = True
 
-        # Perform replacements using re.sub with the replacer function
+            return replaced_value
+
         anonymised_value_with_parts_replaced = combined_pattern.sub(
             replacer, original_value
         )
 
         if made_replacements:
-            # If specific identifiable parts were found and replaced,
-            # store the mapping for the entire original_value to its new anonymised form.
+        
             self.mapping[original_value] = anonymised_value_with_parts_replaced
             self.reverse_mapping[anonymised_value_with_parts_replaced] = original_value
             return anonymised_value_with_parts_replaced
         else:
-            # If no specific patterns (email/phone) were found within the string,
-            # but the string itself is considered identifiable (as per `is_identifiable_string`
-            # which would have called this function), then anonymise the entire string
-            # using the general method (random_chars, random_words, or custom_mapping).
-            # This preserves the original behavior for general identifiable strings.
+
             final_anonymised_value = _get_anonymised_single_token(
                 original_value, "general"
             )
