@@ -203,7 +203,7 @@ def is_identifiable_string(
             else exclude_patterns
         )
         for pattern in patterns_to_check:
-            if re.search(pattern, value_stripped):
+            if re.search(pattern, value_stripped, re.IGNORECASE):
                 return False
 
     if is_number(value_stripped) or is_date(value_stripped):
